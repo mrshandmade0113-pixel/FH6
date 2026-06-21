@@ -14,6 +14,8 @@
 .priority-item:active{cursor:grabbing}
 .priority-item.dragging{opacity:.45;transform:scale(.98)}
 .priority-item::before{content:attr(data-rank) ". ";color:#ffeaa0}
+
+.logicTag{display:inline-block;margin:3px 5px 3px 0;padding:5px 9px;border-radius:999px;background:rgba(0,217,255,.22);border:1px solid rgba(0,217,255,.35);font-size:12px}
 </style></head><body><div class='wrap'><div class='top'><div><h1>FORZA <span class='pink'>HORIZON 6</span></h1><div class='sub'>Pro Tuning Advisor V4｜更詳細套件改裝 + Target Class PI 目標 + 9項調校</div></div><div class='pill'>Cars loaded: <span id='count'>0</span></div></div><div class='grid'><section class='panel'><h2>🚗 建立你的 Tune</h2><label>搜尋車款</label><input id='search' placeholder='例：GT-R / Supra / Porsche'><label>汽車品牌</label><select id='make'></select><label>汽車型號</label><select id='model'></select><label>Target Class</label><select id='target'><option>500C</option><option>600B</option><option>700A</option><option selected>800S1</option><option>900S2</option><option>998R</option></select><label>驅動</label><select id='drive'><option>前驅</option><option selected>後驅</option><option>四驅</option></select><label>賽事類別</label><select id='road'><option>傳統公路賽</option><option>泥地拉力</option><option>越野障礙</option><option>街頭競速賽</option><option>山道對決</option><option>甩尾</option></select><label>調校模式</label><select id="mode" onchange="toggleRank()"><option value="ai" selected>AI推薦：系統自動選最適合需求排序</option><option value="custom">自訂：玩家自行排列5項需求</option></select>
 
 <div id="rankBox">
@@ -69,10 +71,47 @@ function setupDragRank(){
 function carBase(){let row=C.find(x=>x[0]==v('make')&&x[1]==v('model'));let cls=(row?.[3]||'').match(/(\d+)/);return cls?+cls[1]:650}function targetGap(){return LIMIT[v('target')]-carBase()}
 function engine(t,r){let high=r=='傳統公路賽',drift=r=='甩尾';if(drift)return {'500C':'原廠引擎；Street Intake + Street Exhaust，保留容易控制的馬力','600B':'Sport Intake + Sport Exhaust + Street Flywheel，約300–450hp','700A':'Sport/Race Intake + Sport Exhaust + Sport Camshaft，約450–600hp','800S1':'Race Intake + Race Exhaust + Single Turbo/Supercharger，約600–800hp','900S2':'Race Twin Turbo/Supercharger，約800–1000hp，注意油門控制','998R':'極限引擎或換引擎，建議只給高手使用，甩尾較難控制'}[t];return {'500C':'原廠引擎；Street Intake + Street Exhaust；PI不足時加 Street Camshaft','600B':'原廠引擎；Sport Intake + Sport Exhaust + Street Flywheel；PI仍低才加 Sport Camshaft','700A':'原廠或輕量換引擎；Sport/Race Intake + Sport Exhaust + Sport Camshaft；可加低增壓 Turbo','800S1':(high?'Sport/Race Turbo 或 Supercharger；Race Intake + Race Exhaust + Race Camshaft；目標600–800hp':'Sport/Race Turbo；Race Intake + Sport/Race Exhaust；不足800再加 Race Camshaft / Intercooler'),'900S2':'Race Twin Turbo/Supercharger；Race Intake、Exhaust、Camshaft、Intercooler；目標900hp以上','998R':'引擎交換或最高級增壓；所有引擎套件Race級，目標極限馬力'}[t]}
 function tyres(t,r){let snow=(r=='泥地拉力'||r=='越野障礙'),mount=r=='山道對決',high=r=='傳統公路賽';if(snow)return 'Snow/Rally Tire Compound；胎寬只加一級，保留PI給馬力與變速箱';if(t=='500C'||t=='600B')return 'Street/Sport Tire；如PI不足先升胎寬，不建議Race胎';if(t=='700A')return mount?'Sport/Semi-Slick；前後胎寬+1至+2級':'Sport Tire，後驅車後胎寬+2級';if(t=='800S1')return high?'Semi-Slick 或 Race Tire；若未到800，先加後胎寬再加馬力':'Semi-Slick/Race Tire，前胎+1、後胎+2，抓地優先';return 'Race/Slick Tire；前後胎寬盡量加滿，輕量輪圈'}
+
+function profile(){
+  const r=v('road'), d=v('drive'), t=v('target');
+  const p=v('mode')==='ai'?aiRank():getCustomRank();
+  const top=Object.entries(p).sort((a,b)=>a[1]-b[1]).map(x=>x[0]);
+  const first=top[0], second=top[1];
+  return {
+    road:r,drive:d,target:t,p,top,first,second,
+    power:p.acc<=2 || p.spd<=2,
+    speed:p.spd<=2,
+    grip:p.handling<=2,
+    launch:p.launch<=2,
+    braking:p.brake<=2,
+    drift:r==='甩尾',
+    offroad:r==='泥地拉力'||r==='越野障礙',
+    dirt:r==='泥地拉力',
+    cross:r==='越野障礙',
+    street:r==='街頭競速賽',
+    mountain:r==='山道對決',
+    roadRace:r==='傳統公路賽'
+  };
+}
+function priorityText(){
+  const map={acc:'加速',spd:'極速',launch:'起步',handling:'操控',brake:'剎車'};
+  const pf=profile();
+  return pf.top.map((k,i)=>`<span class="logicTag">${i+1}. ${map[k]}</span>`).join('');
+}
+function biasText(pf){
+  if(pf.drift)return '甩尾取向：需要可控打滑、較高後胎壓、強差速鎖定和較大前輪角度。';
+  if(pf.offroad)return pf.cross?'越野障礙取向：車高、懸掛行程、低速扭力和牽引力優先。':'泥地拉力取向：拉力胎、柔韌懸掛、出彎牽引力和穩定煞車優先。';
+  if(pf.power&&pf.speed)return '高速馬力取向：優先馬力、長齒比和低阻力空力。';
+  if(pf.grip&&pf.braking)return '技術彎道取向：優先輪胎、煞車、空力和較穩定車尾。';
+  if(pf.launch)return '起步衝刺取向：優先傳動、差速器鎖定和低中速齒比。';
+  if(pf.street)return '街頭競速取向：加速、煞車和快速轉向比極速更重要。';
+  return '平衡取向：先建立輪胎和操控基礎，再用引擎套件補足PI。';
+}
+
 function upgradePlan(t,d,r){let gap=targetGap(),high=r=='傳統公路賽';let drift=r=='甩尾';let drive=drift?(d=='四驅'?'AWD Conversion 可用，但中央差速設定80%後偏；Race Transmission + Race Differential 必裝':d=='後驅'?'推薦保留RWD；Race Transmission + Race Differential + Race Clutch 必裝':'FWD不建議甩尾；建議轉RWD或AWD後偏'):(d=='四驅'?'AWD Conversion + Race Driveline + Race Diff + Race Transmission':d=='後驅'?'RWD保留；Race Transmission + Race Differential + Race Clutch':'FWD保留；Race Transmission + Race Differential，避免馬力過高打滑');let body=(t=='900S2'||t=='998R')?'Weight Reduction Race；Widebody如可用；Roll Cage只在車尾不穩時安裝':'Weight Reduction Sport/Race；Roll Cage通常不裝，除非山道對決車身太飄';return [['PI追級策略',`目標 ${t} 上限 ${LIMIT[t]}。目前車單原級約 ${carBase()}，差距約 ${gap} PI。${gap>120?'差距大：必須加馬力套件或換引擎，否則不能到達目標級別。':gap<0?'此車可能已超過目標，請降低Target Class或移除高PI套件。':'先輪胎/操控，再用少量馬力補到上限。'}`],['1. 引擎',engine(t,r)+`。完成後在升級畫面檢查PI，最後用 Intake/Exhaust/Flywheel 微調至 ${LIMIT[t]-5}–${LIMIT[t]}。`],['2. 底盤與操控',(r=='泥地拉力'||r=='越野障礙')?'Rally Suspension + Race ARB + Race Brakes；車身較高，容許雪地起伏':'Race Suspension + Race ARB + Race Brakes；山道對決/街頭競速賽建議優先安裝，提升彎速'],['3. 傳動系統',drive+'；S1或以上 Race Transmission 幫助調整齒比，Race Diff 必裝。'],['4. 輪胎與輪圈',tyres(t,r)+'；輪圈選最輕款，例如 Work/Volk/Enkei 類輕量輪圈；輪圈尺寸不要盲目加大，避免PI浪費。'],['5. 空力套件與外觀',high?'Forza Front Aero + Rear Wing，但下壓力設定不要推滿，保留極速':'Forza Front Aero + Rear Wing；山道對決/街頭競速賽可提高尾翼穩定入彎'],['6. 車身套件與改裝工程',body+'；若PI不足以到Target，先不要裝外觀重件，把PI留給馬力/胎。'],['補PI次序',`若仍未達 ${LIMIT[t]}：① 加後胎寬 → ② 加Race Exhaust/Intake → ③ 加Turbo/Supercharger → ④ 加Camshaft → ⑤ 換引擎。若超過：先降Camshaft/Intercooler，再降胎寬。`]]}
 function tune(mode){let road=v('road'),drv=v('drive'),h=need('handling'),s=need('spd'),a=need('acc'),grip=h<=2||road=='山道對決',high=road=='傳統公路賽'||s<=2,snow=(road=='泥地拉力'||road=='越野障礙');let psiF=snow?26:grip?28:high?30:29,psiR=snow?25:grip?27.5:high?30.5:29,fd=high?3.20:grip?3.75:a<=2?3.95:3.60;if(mode==2)fd+=high?-.12:.12;let camF=snow?-0.8:grip?-1.8:-1.3,camR=snow?-0.6:grip?-1.4:-1.0,toeF=grip?0.1:0,toeR=drv=='後驅'?0.1:0,caster=grip?6.5:5.8,arbF=grip?28:high?24:25,arbR=drv=='後驅'?(grip?22:19):(drv=='四驅'?20:16),springF=snow?70:grip?115:high?105:95,springR=drv=='後驅'?springF-8:springF+2,height=snow?'較高：前 16.5 / 後 16.8 cm':high?'偏低：前 9.5 / 後 10.0 cm':'中低：前 11.0 / 後 11.5 cm',rebF=grip?9.5:8.2,rebR=drv=='後驅'?8.8:7.8,bumpF=(rebF*.58).toFixed(1),bumpR=(rebR*.58).toFixed(1),aero=high?'前 45% / 後 55%，避免最大下壓力':grip?'前 70% / 後 80%，山道對決穩定優先':snow?'前 35% / 後 45%':'前 55% / 後 65%',diff=drv=='後驅'?`Accel ${grip?65:75}% / Decel ${grip?18:25}%`:drv=='四驅'?`前 Accel 25% Decel 5%；後 Accel 65% Decel 15%；中央 65% 後偏`:'前 Accel 35% / Decel 8%';return [['輪胎胎壓',`${psiF} PSI / ${psiR} PSI`],['齒比',`Final Drive ${fd.toFixed(2)}；1檔短、2-4檔緊密、5-6檔按極速拉長`],['定位',`Camber 前 ${camF}° / 後 ${camR}°；Toe 前 ${toeF}° / 後 ${toeR}°；Caster ${caster}°`],['防傾桿 ARB',`前 ${arbF} / 後 ${arbR}`],['彈簧',`前 ${springF} kgf/mm / 後 ${springR} kgf/mm`],['車高',height],['阻尼',`Rebound 前 ${rebF} / 後 ${rebR}；Bump 前 ${bumpF} / 後 ${bumpR}`],['空力',aero],['差速器',diff]]}
 function block(title,arr,cls=''){return `<div class="box ${cls}"><h3>${title}</h3>`+arr.map(x=>`<div class="spec"><b>${x[0]}</b><span>${x[1]}</span></div>`).join('')+`</div>`}
-function build(){let ai=v('mode')=='ai'?aiRank():null,modeMsg=ai?`<div class="warning">🤖 AI推薦模式：${ai.reason}</div>`:`<div class="warning">🎮 自訂模式：系統會根據玩家拖拉排列的5項需求生成套件及調校。</div>`;let gap=targetGap(),warn=gap>130?`<div class="warning">⚠️ 此車與目標級別差距較大，單靠調校不能提升PI。請按「補PI次序」增加馬力/輪胎套件，直到升級畫面顯示接近 ${LIMIT[v('target')]}。</div>`:gap<0?`<div class="warning">⚠️ 此車原級可能已高於目標級別，建議改選更高Target Class。</div>`:'';document.getElementById('out').innerHTML=`<h2>🔧 改裝及調校建議</h2><div class="carline">${v('make')}｜${v('model')} <span class="badge">${v('target')}</span><span class="badge">${v('drive')}</span><span class="badge">${v('road')}</span></div>${modeMsg}${warn}${block('A. 詳細套件改裝建議：先達到Target Class，再調校',upgradePlan(v('target'),v('drive'),v('road')),'upgrade')}<div class="result">${block('Tune 1：穩定抓地設定',tune(1))}${block('Tune 2：進取速度設定',tune(2))}</div>`}
+function build(){let ai=v('mode')=='ai'?aiRank():null,modeMsg=ai?`<div class="warning">🤖 AI推薦模式：${ai.reason}</div>`:`<div class="warning">🎮 自訂模式：系統會根據玩家拖拉排列的5項需求生成套件、PI追級策略及調校數值。</div>`;let gap=targetGap(),warn=gap>130?`<div class="warning">⚠️ 此車與目標級別差距較大，單靠調校不能提升PI。請按「補PI次序」增加馬力/輪胎套件，直到升級畫面顯示接近 ${LIMIT[v('target')]}。</div>`:gap<0?`<div class="warning">⚠️ 此車原級可能已高於目標級別，建議改選更高Target Class。</div>`:'';document.getElementById('out').innerHTML=`<h2>🔧 改裝及調校建議</h2><div class="carline">${v('make')}｜${v('model')} <span class="badge">${v('target')}</span><span class="badge">${v('drive')}</span><span class="badge">${v('road')}</span></div>${modeMsg}${warn}${block('A. 詳細套件改裝建議：先達到Target Class，再調校',upgradePlan(v('target'),v('drive'),v('road')),'upgrade')}<div class="result">${block('Tune 1：穩定抓地設定',tune(1))}${block('Tune 2：進取速度設定',tune(2))}</div>`}
 </script><script>
 document.addEventListener('DOMContentLoaded',function(){
   const g=document.getElementById('generateBtn');
